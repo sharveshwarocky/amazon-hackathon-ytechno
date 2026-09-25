@@ -1,0 +1,241 @@
+BRO. This output is **gold**. We now know what kind of monster we're dealing with. 🗿
+
+### What the data tells us
+
+Your dataset is enormous:
+
+- **S1:** 2,206,821 businesses
+- **S2:** 5,034,616
+- **S3:** 5,285,603
+- **Total S2/S3 candidates:** **10,320,219** :chatgpt-content-reference{index="0"}
+
+So brute-force matching S1 against S2+S3 is absolutely impossible. **Blocking is our #1 engineering problem.**
+
+### The biggest discovery: most S1 businesses have multiple matches
+
+Your ground truth says:
+
+```text
+0 matches     123,247   (5.585%)
+1 match       119,157   (5.399%)
+2 matches     375,212
+3 matches     530,841
+4 matches     484,115
+5 matches     321,957
+6 matches     164,868
+7 matches      63,968
+8 matches      18,680
+9 matches       4,205
+10 matches        534
+11 matches         37
+```
+
+So:
+
+> **89.0% of S1 entities have multiple matches.**
+
+Average = **3.461 matches per S1**, maximum = **11**. There are **7,638,365 total true links**. :chatgpt-content-reference{index="1"}
+
+This is a VERY important design decision:
+
+### ❌ We cannot make the model:
+> "Pick the best candidate."
+
+### ✅ We need:
+> "Score every good candidate and potentially return several matches."
+
+That fundamentally shapes our final prediction logic.
+
+---
+
+# 🔥 Second discovery: names are not unique
+
+S1 has:
+
+```text
+2,206,821 records
+1,539,229 unique names
+667,592 duplicate-name records
+```
+
+S2 and S3 also have huge numbers of duplicate-name records. :chatgpt-content-reference{index="2"}
+
+And the common names are things like:
+
+```text
+Primary Care Group
+Pediatric Group
+Dental Group
+Urgent Care
+Physical Therapy
+```
+
+Some occur **200–400+ times**. :chatgpt-content-reference{index="3"}
+
+So:
+
+```text
+name == same
+```
+
+does **NOT** mean:
+
+```text
+business == same
+```
+
+This means **name-only blocking is dangerous**.
+
+---
+
+# 🏠 Addresses are actually interesting
+
+S1 has only about **76k duplicate-address records**, while S2 and S3 have much more:
+
+- S1: 76,215 duplicated addresses
+- S2: 697,354
+- S3: 652,838 :chatgpt-content-reference{index="4"}
+
+At the same time, S2/S3 have ~3.3% missing addresses:
+
+- S2: 168,967
+- S3: 175,916 :chatgpt-content-reference{index="5"}
+
+So address is:
+
+> **Very useful, but can't be our only signal.**
+
+---
+
+# 🌍 Country is an easy first filter
+
+Training currently has only:
+
+```text
+US
+India
+```
+
+across all three sources. :chatgpt-content-reference{index="6"}
+
+This means we can immediately prevent nonsense like:
+
+```text
+S1 India ↔ S2 US
+```
+
+during blocking.
+
+But remember: **don't hard-code the country list**, because the challenge says France appears in the test set. :chatgpt-content-reference{index="7"}
+
+---
+
+# 👻 Singleton situation
+
+Exactly **123,247 S1 entities have zero matches**, or **5.585%**. :chatgpt-content-reference{index="8"}
+
+This matters because the challenge gives a singleton with no predicted match a perfect per-entity score, while falsely attaching a match gets 0. :chatgpt-content-reference{index="9"}
+
+So our model must be capable of saying:
+
+> **"Nope, none of these candidates are actually this business."**
+
+Not:
+
+> "Well, this one scored 0.31, let's marry them anyway." 💀
+
+---
+
+# 🧠 What I think we should do next
+
+**Do NOT start building the ML model yet.**
+
+We need one more layer of EDA:
+
+### Next analysis = understand the actual true matches.
+
+Specifically, we should find:
+
+**1. How many true matches come from S2 vs S3?**
+
+Example:
+
+```text
+S1 → S2 only
+S1 → S3 only
+S1 → both S2 and S3
+```
+
+**2. How often is the business name exactly the same?**
+
+```text
+exact name match
+normalized name match
+different name
+```
+
+**3. How often is the address exactly the same?**
+
+**4. How many true matches share the same country + name?**
+
+**5. How different are matched names and addresses?**
+
+That will tell us whether we should rely more heavily on:
+
+```text
+name
+address
+country
+```
+
+and what our blocking strategy needs to look like.
+
+---
+
+# 🚧 Our likely Blocking V1
+
+Based on what we've seen so far, I'm already leaning toward:
+
+```text
+S1
+ │
+ ├── same country
+ │
+ ├── name token/block
+ │
+ ├── address token/block
+ │
+ └── combinations of the above
+        ↓
+   candidate union
+        ↓
+   similarity model
+```
+
+**Not**:
+
+```text
+same name → candidate
+```
+
+because duplicate names are clearly too common. :chatgpt-content-reference{index="10"}
+
+---
+
+## 🎯 Next code I want us to run
+
+Before we touch `blocking.py`, let's extract **match structure** from ground truth.
+
+I want to know:
+
+```text
+S1 → S2 only
+S1 → S3 only
+S1 → S2 + S3
+```
+
+and then measure **exact name/address agreement for true matches**.
+
+That will give us the first real blueprint for Blocking V1.
+
+You're officially out of the "toy dataset" zone now, dei. **10.3 million candidate records and 7.6 million true links is a proper Boss Battle.** 💀🔥
