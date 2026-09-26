@@ -1,0 +1,18 @@
+# Challenge datasets
+data/
+
+# Generated outputs
+src/output/
+output/
+
+# Python cache
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
